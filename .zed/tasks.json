@@ -46,14 +46,14 @@
   {
     "label": "CMake Run Debug",
     "command": "cmd",
-    "args": ["/C", "build-debug\\VKLearn.exe"],
+    "args": ["/C", "build-debug\\VKLearn.exe", "1280", "720"],
     "cwd": "$ZED_WORKTREE_ROOT",
     "use_new_terminal": true,
   },
   {
     "label": "CMake Run Release",
     "command": "cmd",
-    "args": ["/C", "build-release\\VKLearn.exe"],
+    "args": ["/C", "build-release\\VKLearn.exe", "1280", "720"],
     "cwd": "$ZED_WORKTREE_ROOT",
     "use_new_terminal": true,
   },

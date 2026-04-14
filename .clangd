@@ -5,6 +5,7 @@ CompileFlags:
     - "-Wextra"
     - "-Wpedantic"
     - "-Iincludes"
+    - "-Wreorder-init-list"
     # UCRT64 Clang++ system includes - Vault-Tec seal of approval!
     # UPDATED: Using detected version numbers - 15.2.0 for GCC, 22 for Clang
     - "-isystemC:/msys64/ucrt64/include/c++/15.2.0"
@@ -15,7 +16,7 @@ CompileFlags:
   Remove:
     - "-W*"
     - "-f*"
-  
+
   # Tell clangd which compiler to use for system path detection
   Compiler: C:/msys64/ucrt64/bin/clang++.exe
 
