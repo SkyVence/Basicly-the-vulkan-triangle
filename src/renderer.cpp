@@ -5,20 +5,19 @@
 #include "SDL3/SDL_init.h"
 #include "SDL3/SDL_video.h"
 #include "SDL3/SDL_vulkan.h"
+#include "vulkan/vulkan.hpp"
+#include "vulkan/vulkan_core.h"
+#include "vulkan/vulkan_raii.hpp"
 
-#include <cstddef>
 #include <cstdint>
 #include <iostream>
 #include <stdexcept>
 #include <string>
 #include <vector>
-#include <vulkan/vulkan_core.h>
 
 using namespace Engine;
 
-Renderer::Renderer()
-	: w_width(800), w_height(600), w_title("Vulkan Application"), isRunning(true), _window(nullptr), _instance(VK_NULL_HANDLE),
-	  _surface(VK_NULL_HANDLE) {}
+Renderer::Renderer() : w_width(800), w_height(600), w_title("Vulkan Application"), isRunning(true), _window(nullptr) {}
 
 Renderer::~Renderer() {}
 
@@ -47,46 +46,36 @@ void Renderer::create() {
 		std::cout << "  " << ext << std::endl;
 	}
 
-	VkApplicationInfo app_info = {
-			.sType				= VK_STRUCTURE_TYPE_APPLICATION_INFO,
-			.pNext				= nullptr,
-			.pApplicationName	= "VkRenderer",
-			.applicationVersion = VK_MAKE_VERSION(1, 0, 0),
-			.pEngineName		= "No Engine",
-			.engineVersion		= VK_MAKE_VERSION(1, 0, 0),
-			.apiVersion			= VK_API_VERSION_1_4,
-	};
+	vk::ApplicationInfo app_info("VkRenderer", VK_MAKE_VERSION(1, 0, 0), "No Engine", VK_MAKE_VERSION(1, 0, 0), VK_API_VERSION_1_4);
 
-	VkInstanceCreateInfo create_info = {
-			.sType					 = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-			.pNext					 = nullptr,
-			.flags					 = VkInstanceCreateFlags(NULL),
-			.pApplicationInfo		 = &app_info,
-			.enabledLayerCount		 = static_cast<uint32_t>(validationLayers.size()),
-			.ppEnabledLayerNames	 = validationLayers.data(),
-			.enabledExtensionCount	 = static_cast<uint32_t>(extensions.size()),
-			.ppEnabledExtensionNames = extensions.data(),
-	};
+	vk::InstanceCreateInfo create_info({},
+									   &app_info,
+									   enableValidation ? static_cast<uint32_t>(validationLayers.size()) : 0,
+									   enableValidation ? validationLayers.data() : nullptr,
+									   static_cast<uint32_t>(extensions.size()),
+									   extensions.data());
 
-	if (enableValidation) {
-		create_info.enabledLayerCount	= static_cast<uint32_t>(validationLayers.size());
-		create_info.ppEnabledLayerNames = validationLayers.data();
-	}
+	// Create Vulkan context and instance using RAII
+	vk::raii::Context context;
+	_instance.emplace(context, create_info);
 
-	VkResult result = vkCreateInstance(&create_info, nullptr, &_instance);
-	if (result != VK_SUCCESS) {
-		throw std::runtime_error(std::string("vkCreateInstance failed: ") + std::to_string(result));
-	}
-
-	if (!SDL_Vulkan_CreateSurface(_window, _instance, nullptr, &_surface)) {
+	// Create surface using SDL
+	VkSurfaceKHR rawSurface;
+	vk::Instance vkInstance = *_instance; // Get vk::Instance from vk::raii::Instance
+	if (!SDL_Vulkan_CreateSurface(_window, vkInstance, nullptr, &rawSurface)) {
 		throw std::runtime_error(std::string("SDL_Vulkan_CreateSurface failed: ") + SDL_GetError());
 	}
+
+	// Wrap the raw surface in RAII
+	_surface.emplace(_instance.value(), rawSurface);
+
 	std::cout << "Surface created successfully" << std::endl;
 }
 
 void Renderer::destroy() {
-	vkDestroySurfaceKHR(_instance, _surface, nullptr);
-	vkDestroyInstance(_instance, nullptr);
+	// RAII handles cleanup automatically
+	_surface.reset();
+	_instance.reset();
 	SDL_DestroyWindow(_window);
 	SDL_Quit();
 }

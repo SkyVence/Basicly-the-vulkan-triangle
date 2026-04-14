@@ -4,9 +4,10 @@
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_video.h>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
-#include <vulkan/vulkan_core.h>
+#include <vulkan/vulkan_raii.hpp>
 
 namespace Engine {
 
@@ -38,9 +39,8 @@ namespace Engine {
 		SDL_Window* _window;
 		SDL_Event	_event;
 
-		// Vulkan
-		VkInstance			 _instance;
-		VkInstanceCreateInfo _create_info;
-		VkSurfaceKHR		 _surface = VK_NULL_HANDLE;
+		// Vulkan RAII
+		std::optional<vk::raii::Instance>	_instance;
+		std::optional<vk::raii::SurfaceKHR> _surface;
 	};
 } // namespace Engine
