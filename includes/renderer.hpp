@@ -40,7 +40,14 @@ namespace Engine {
 		SDL_Event	_event;
 
 		// Vulkan RAII
-		std::optional<vk::raii::Instance>	_instance;
-		std::optional<vk::raii::SurfaceKHR> _surface;
+		// Member variables must be declared in order of parent-to-child dependency.
+		// They are destroyed in reverse order (child-to-parent), so declare context first,
+		// then instance, then surface, then physical device.
+		vk::raii::Context						_context;
+		std::optional<vk::raii::Instance>		_instance;
+		std::optional<vk::raii::SurfaceKHR>		_surface;
+		std::optional<vk::raii::PhysicalDevice> _physicalDevice;
+
+		void pickPhysicalDevice();
 	};
 } // namespace Engine
