@@ -1,0 +1,14 @@
+{
+  "lsp": {
+    "clangd": {
+      "binary": {
+        "path": "C:/msys64/ucrt64/bin/clangd.exe",
+        "arguments": [
+          "--background-index",
+          "--clang-tidy",
+          "--header-insertion=iwyu"
+        ]
+      }
+    }
+  }
+}

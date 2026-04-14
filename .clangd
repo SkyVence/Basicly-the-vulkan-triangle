@@ -1,0 +1,38 @@
+CompileFlags:
+  Add:
+    - "-std=c++23"
+    - "-Wall"
+    - "-Wextra"
+    - "-Wpedantic"
+    - "-Iincludes"
+    # UCRT64 Clang++ system includes - Vault-Tec seal of approval!
+    # UPDATED: Using detected version numbers - 15.2.0 for GCC, 22 for Clang
+    - "-isystemC:/msys64/ucrt64/include/c++/15.2.0"
+    - "-isystemC:/msys64/ucrt64/include/c++/15.2.0/x86_64-w64-mingw32"
+    - "-isystemC:/msys64/ucrt64/include"
+    - "-isystemC:/msys64/ucrt64/x86_64-w64-mingw32/include"
+    - "-isystemC:/msys64/ucrt64/lib/clang/22/include"
+  Remove:
+    - "-W*"
+    - "-f*"
+  
+  # Tell clangd which compiler to use for system path detection
+  Compiler: C:/msys64/ucrt64/bin/clang++.exe
+
+Index:
+  Background: Build
+
+Diagnostics:
+  UnusedIncludes: Strict
+  MissingIncludes: Strict
+
+InlayHints:
+  Enabled: true
+  ParameterNames: true
+  DeducedTypes: true
+
+Hover:
+  ShowAKA: true
+
+Completion:
+  AllScopes: true
