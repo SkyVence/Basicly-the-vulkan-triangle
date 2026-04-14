@@ -62,6 +62,8 @@ void Renderer::create() {
 			.pNext					 = nullptr,
 			.flags					 = VkInstanceCreateFlags(NULL),
 			.pApplicationInfo		 = &app_info,
+			.enabledLayerCount		 = static_cast<uint32_t>(validationLayers.size()),
+			.ppEnabledLayerNames	 = validationLayers.data(),
 			.enabledExtensionCount	 = static_cast<uint32_t>(extensions.size()),
 			.ppEnabledExtensionNames = extensions.data(),
 	};
