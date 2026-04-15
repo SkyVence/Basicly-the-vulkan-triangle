@@ -122,6 +122,7 @@ void Renderer::createInstance() {
 
 		// Create Vulkan context and instance using RAII
 		_instance.emplace(_context, create_info);
+		std::cout << "Created Vulkan instance" << std::endl;
 	} catch (const vk::SystemError& err) {
 		throw std::runtime_error(std::string("Vulkan system error: ") + err.what());
 	} catch (const std::exception& err) {
@@ -207,6 +208,8 @@ void Renderer::createLogicalDevice() {
 	featureChain.get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering					   = true;
 	featureChain.get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState = true;
 
+
+
     // create a Device
     float                     queuePriority = 0.5f;
     vk::DeviceQueueCreateInfo deviceQueueCreateInfo = vk::DeviceQueueCreateInfo()
@@ -222,7 +225,7 @@ void Renderer::createLogicalDevice() {
 
     _device.emplace(_physicalDevice.value(), deviceCreateInfo);
     _graphicsQueue.emplace(_device.value(), queueIndex, 0);
-	std::cout << "Graphics queue created" << std::endl;
+	std::cout << "Created logical device" << std::endl;
 }
 
 void Renderer::destroy() {
@@ -233,6 +236,7 @@ void Renderer::destroy() {
 	_instance.reset();
 	SDL_DestroyWindow(_window);
 	SDL_Quit();
+	std::cout << "Destroyed renderer" << std::endl;
 }
 
 void Renderer::run() {

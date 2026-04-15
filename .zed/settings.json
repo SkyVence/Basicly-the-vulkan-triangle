@@ -1,14 +1,20 @@
 {
   "lsp": {
     "clangd": {
+      "initialization_options": {
+        "diagnostics": {
+          "enabled": false,
+          "ignorePath": "**/vendors/**",
+        },
+      },
       "binary": {
         "path": "C:/msys64/ucrt64/bin/clangd.exe",
         "arguments": [
           "--background-index",
           "--clang-tidy",
-          "--header-insertion=iwyu"
-        ]
-      }
-    }
-  }
+          "--header-insertion=iwyu",
+        ],
+      },
+    },
+  },
 }
