@@ -87,16 +87,17 @@ bool isDeviceSuitable(vk::raii::PhysicalDevice const& physicalDevice) {
 }
 
 Renderer::Renderer(SDL_Window* window, SDL_Event* event) : isRunning(true), _window(window), _event(event) {
-	create();
+	createInstance();
+	createSurface();
 	pickPhysicalDevice();
 	createLogicalDevice();
 }
 
 Renderer::~Renderer() { destroy(); }
 
-void Renderer::create() {
-
+void Renderer::createInstance() {
 	try {
+
 		// Get SDL Vulkan extensions
 		uint32_t		   sdlExtCount = 0;
 		const char* const* sdlExts	   = SDL_Vulkan_GetInstanceExtensions(&sdlExtCount);
@@ -122,6 +123,16 @@ void Renderer::create() {
 
 		// Create Vulkan context and instance using RAII
 		_instance.emplace(_context, create_info);
+	} catch (const vk::SystemError& err) {
+		throw std::runtime_error(std::string("Vulkan system error: ") + err.what());
+	} catch (const std::exception& err) {
+		throw std::runtime_error(std::string("Standard exception: ") + err.what());
+	}
+}
+
+void Renderer::createSurface() {
+
+	try {
 
 		// Create surface using SDL
 		VkSurfaceKHR rawSurface;

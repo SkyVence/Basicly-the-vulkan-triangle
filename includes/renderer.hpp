@@ -31,7 +31,6 @@ namespace Engine {
 		Renderer(SDL_Window* window, SDL_Event* event);
 		~Renderer();
 		void run();
-		void create();
 		void destroy();
 
 	  private:
@@ -50,6 +49,8 @@ namespace Engine {
 		std::optional<vk::raii::Device>			_device;
 		std::optional<vk::raii::Queue>			_graphicsQueue;
 
+		void createInstance();
+		void createSurface();
 		void pickPhysicalDevice();
 		void createLogicalDevice();
 	};
