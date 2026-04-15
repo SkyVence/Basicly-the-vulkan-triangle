@@ -14,7 +14,6 @@
 #include <cstring>
 #include <exception>
 #include <iostream>
-#include <iterator>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -182,28 +181,47 @@ void Renderer::pickPhysicalDevice() {
 }
 
 void Renderer::createLogicalDevice() {
+    // Find the index of the first queue family that supports graphics operations
 	std::vector<vk::QueueFamilyProperties> queueFamilyProperties = _physicalDevice->getQueueFamilyProperties();
 
-	auto graphicsQueueFamilyProperty = std::ranges::find_if(
-			queueFamilyProperties, [](auto const& qfp) { return (qfp.queueFlags & vk::QueueFlagBits::eGraphics) != static_cast<vk::QueueFlags>(0); });
-
-	auto graphicsIndex = static_cast<uint32_t>(std::distance(queueFamilyProperties.begin(), graphicsQueueFamilyProperty));
-
-	float					  queuePriority = 1.0f;
-	vk::DeviceQueueCreateInfo deviceQueueCreateInfo({}, graphicsIndex, 1, &queuePriority);
+	// Get the first index into queueFamilyProperties that supports graphics operations and present
+	uint32_t queueIndex = ~0;
+    for (uint32_t qfpIndex = 0; qfpIndex < queueFamilyProperties.size(); qfpIndex++)
+    {
+      if ((queueFamilyProperties[qfpIndex].queueFlags & vk::QueueFlagBits::eGraphics) &&
+          _physicalDevice->getSurfaceSupportKHR(qfpIndex, *_surface))
+      {
+        // found a queue family that supports both graphics and present
+        queueIndex = qfpIndex;
+        break;
+      }
+    }
+    if (queueIndex == uint32_t(~0))
+    {
+      throw std::runtime_error("Could not find a queue for graphics and present -> terminating");
+    }
 
 	// Create a chain of feature structures
 	vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>
 			featureChain;
 	featureChain.get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering					   = true;
 	featureChain.get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState = true;
-	std::vector<const char*> requiredDeviceExtension										   = {vk::KHRSwapchainExtensionName};
-	vk::DeviceCreateInfo	 deviceCreateInfo(
-			{}, 1, &deviceQueueCreateInfo, static_cast<uint32_t>(requiredDeviceExtension.size()), requiredDeviceExtension.data());
-	deviceCreateInfo.pNext = &featureChain.get<vk::PhysicalDeviceFeatures2>();
 
-	_device.emplace(_physicalDevice.value(), deviceCreateInfo);
-	_graphicsQueue.emplace(_device.value().getQueue(graphicsIndex, 0));
+    // create a Device
+    float                     queuePriority = 0.5f;
+    vk::DeviceQueueCreateInfo deviceQueueCreateInfo = vk::DeviceQueueCreateInfo()
+                                                    .setQueueFamilyIndex(queueIndex)
+                                                    .setQueueCount(1)
+                                                    .setPQueuePriorities(&queuePriority);
+    vk::DeviceCreateInfo      deviceCreateInfo = vk::DeviceCreateInfo()
+                                               .setPNext(&featureChain.get<vk::PhysicalDeviceFeatures2>())
+                                               .setQueueCreateInfoCount(1)
+                                               .setPQueueCreateInfos(&deviceQueueCreateInfo)
+                                               .setEnabledExtensionCount(static_cast<uint32_t>(requiredDeviceExtension.size()))
+                                               .setPpEnabledExtensionNames(requiredDeviceExtension.data());
+
+    _device.emplace(_physicalDevice.value(), deviceCreateInfo);
+    _graphicsQueue.emplace(_device.value(), queueIndex, 0);
 	std::cout << "Graphics queue created" << std::endl;
 }
 
