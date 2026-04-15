@@ -23,6 +23,41 @@ using namespace Engine;
 
 static const std::vector<const char*> requiredDeviceExtension = {vk::KHRSwapchainExtensionName};
 
+// Helper function to rank a device (higher score is better)
+// Discrete GPUs get highest priority, followed by integrated GPUs
+static int rankDevice(vk::raii::PhysicalDevice const& physicalDevice) {
+	auto props = physicalDevice.getProperties();
+
+	switch (props.deviceType) {
+	case vk::PhysicalDeviceType::eDiscreteGpu:
+		return 1000;
+	case vk::PhysicalDeviceType::eIntegratedGpu:
+		return 500;
+	case vk::PhysicalDeviceType::eVirtualGpu:
+		return 100;
+	case vk::PhysicalDeviceType::eCpu:
+		return 10;
+	default:
+		return 0;
+	}
+}
+
+// Helper function to get device type as string
+static std::string getDeviceTypeString(vk::PhysicalDeviceType type) {
+	switch (type) {
+	case vk::PhysicalDeviceType::eDiscreteGpu:
+		return "Discrete GPU";
+	case vk::PhysicalDeviceType::eIntegratedGpu:
+		return "Integrated GPU";
+	case vk::PhysicalDeviceType::eVirtualGpu:
+		return "Virtual GPU";
+	case vk::PhysicalDeviceType::eCpu:
+		return "CPU";
+	default:
+		return "Unknown";
+	}
+}
+
 bool isDeviceSuitable(vk::raii::PhysicalDevice const& physicalDevice) {
 	// Check if the physicalDevice supports the Vulkan 1.3 API version
 	bool supportsVulkan1_3 = physicalDevice.getProperties().apiVersion >= vk::ApiVersion13;
@@ -51,7 +86,7 @@ bool isDeviceSuitable(vk::raii::PhysicalDevice const& physicalDevice) {
 	return supportsVulkan1_3 && supportsGraphics && supportsAllRequiredExtensions && supportsRequiredFeatures;
 }
 
-Renderer::Renderer() : w_width(1280), w_height(720), w_title("Vulkan Application"), isRunning(true), _window(nullptr) {
+Renderer::Renderer(SDL_Window* window, SDL_Event* event) : isRunning(true), _window(window), _event(event) {
 	create();
 	pickPhysicalDevice();
 	createLogicalDevice();
@@ -62,16 +97,6 @@ Renderer::~Renderer() { destroy(); }
 void Renderer::create() {
 
 	try {
-
-		if (!SDL_Init(SDL_INIT_VIDEO)) {
-			throw std::runtime_error(std::string("SDL_Init failed: ") + SDL_GetError());
-		}
-
-		_window = SDL_CreateWindow(w_title.c_str(), w_width, w_height, SDL_WINDOW_VULKAN);
-		if (!_window) {
-			throw std::runtime_error(std::string("SDL_CreateWindow failed: ") + SDL_GetError());
-		}
-
 		// Get SDL Vulkan extensions
 		uint32_t		   sdlExtCount = 0;
 		const char* const* sdlExts	   = SDL_Vulkan_GetInstanceExtensions(&sdlExtCount);
@@ -119,18 +144,38 @@ void Renderer::create() {
 
 void Renderer::pickPhysicalDevice() {
 	std::vector<vk::raii::PhysicalDevice> physicalDevices = _instance->enumeratePhysicalDevices();
-	auto const devIter = std::ranges::find_if(physicalDevices, [&](auto const& physicalDevice) { return isDeviceSuitable(physicalDevice); });
-	if (devIter == physicalDevices.end()) {
+
+	int bestIndex = -1;
+	int bestScore = -1;
+
+	// Find the suitable device with the highest score (discrete GPU preferred)
+	for (size_t i = 0; i < physicalDevices.size(); ++i) {
+		if (isDeviceSuitable(physicalDevices[i])) {
+			int score = rankDevice(physicalDevices[i]);
+			if (score > bestScore) {
+				bestScore = score;
+				bestIndex = static_cast<int>(i);
+			}
+		}
+	}
+
+	if (bestIndex == -1) {
 		throw std::runtime_error("failed to find a suitable GPU!");
 	}
-	_physicalDevice.emplace(*devIter);
-	std::cout << "Physical device selected: " << _physicalDevice->getProperties().deviceName << " VRAM: " << "Could not calculate yet" << std::endl;
+
+	_physicalDevice.emplace(physicalDevices[bestIndex]);
+	auto props		 = _physicalDevice->getProperties();
+	auto memoryProps = _physicalDevice->getMemoryProperties();
+	std::cout << "Physical device selected: " << props.deviceName << " (" << getDeviceTypeString(props.deviceType)
+			  << ") VRAM: " << memoryProps.memoryHeaps[0].size / 1024 / 1024 << " MB" << std::endl;
 }
 
 void Renderer::createLogicalDevice() {
-	std::vector<vk::QueueFamilyProperties> queueFamilyProperties	   = _physicalDevice->getQueueFamilyProperties();
-	auto								   graphicsQueueFamilyProperty = std::ranges::find_if(
+	std::vector<vk::QueueFamilyProperties> queueFamilyProperties = _physicalDevice->getQueueFamilyProperties();
+
+	auto graphicsQueueFamilyProperty = std::ranges::find_if(
 			queueFamilyProperties, [](auto const& qfp) { return (qfp.queueFlags & vk::QueueFlagBits::eGraphics) != static_cast<vk::QueueFlags>(0); });
+
 	auto graphicsIndex = static_cast<uint32_t>(std::distance(queueFamilyProperties.begin(), graphicsQueueFamilyProperty));
 
 	float					  queuePriority = 1.0f;
@@ -145,6 +190,7 @@ void Renderer::createLogicalDevice() {
 	vk::DeviceCreateInfo	 deviceCreateInfo(
 			{}, 1, &deviceQueueCreateInfo, static_cast<uint32_t>(requiredDeviceExtension.size()), requiredDeviceExtension.data());
 	deviceCreateInfo.pNext = &featureChain.get<vk::PhysicalDeviceFeatures2>();
+
 	_device.emplace(_physicalDevice.value(), deviceCreateInfo);
 	_graphicsQueue.emplace(_device.value().getQueue(graphicsIndex, 0));
 	std::cout << "Graphics queue created" << std::endl;
@@ -162,8 +208,8 @@ void Renderer::destroy() {
 
 void Renderer::run() {
 	while (isRunning) {
-		if (SDL_PollEvent(&_event)) {
-			if (_event.type == SDL_EVENT_QUIT) {
+		if (SDL_PollEvent(_event)) {
+			if (_event->type == SDL_EVENT_QUIT) {
 				isRunning = false;
 			}
 		}

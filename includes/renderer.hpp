@@ -28,7 +28,7 @@ namespace Engine {
 		uint32_t	w_height;
 		std::string w_title;
 		bool		isRunning;
-		Renderer();
+		Renderer(SDL_Window* window, SDL_Event* event);
 		~Renderer();
 		void run();
 		void create();
@@ -37,7 +37,7 @@ namespace Engine {
 	  private:
 		// SDL
 		SDL_Window* _window;
-		SDL_Event	_event;
+		SDL_Event*	_event;
 
 		// Vulkan RAII
 		// Member variables must be declared in order of parent-to-child dependency.
