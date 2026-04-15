@@ -7,12 +7,14 @@
 #include "SDL3/SDL_vulkan.h"
 #include "vulkan/vulkan.hpp"
 #include "vulkan/vulkan_core.h"
+#include "vulkan/vulkan_raii.hpp"
 
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <exception>
 #include <iostream>
+#include <iterator>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -52,6 +54,7 @@ bool isDeviceSuitable(vk::raii::PhysicalDevice const& physicalDevice) {
 Renderer::Renderer() : w_width(1280), w_height(720), w_title("Vulkan Application"), isRunning(true), _window(nullptr) {
 	create();
 	pickPhysicalDevice();
+	createLogicalDevice();
 }
 
 Renderer::~Renderer() { destroy(); }
@@ -121,11 +124,36 @@ void Renderer::pickPhysicalDevice() {
 		throw std::runtime_error("failed to find a suitable GPU!");
 	}
 	_physicalDevice.emplace(*devIter);
-	std::cout << "Physical device selected: " << _physicalDevice->getProperties().deviceName << std::endl;
+	std::cout << "Physical device selected: " << _physicalDevice->getProperties().deviceName << " VRAM: " << "Could not calculate yet" << std::endl;
+}
+
+void Renderer::createLogicalDevice() {
+	std::vector<vk::QueueFamilyProperties> queueFamilyProperties	   = _physicalDevice->getQueueFamilyProperties();
+	auto								   graphicsQueueFamilyProperty = std::ranges::find_if(
+			queueFamilyProperties, [](auto const& qfp) { return (qfp.queueFlags & vk::QueueFlagBits::eGraphics) != static_cast<vk::QueueFlags>(0); });
+	auto graphicsIndex = static_cast<uint32_t>(std::distance(queueFamilyProperties.begin(), graphicsQueueFamilyProperty));
+
+	float					  queuePriority = 1.0f;
+	vk::DeviceQueueCreateInfo deviceQueueCreateInfo({}, graphicsIndex, 1, &queuePriority);
+
+	// Create a chain of feature structures
+	vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>
+			featureChain;
+	featureChain.get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering					   = true;
+	featureChain.get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState = true;
+	std::vector<const char*> requiredDeviceExtension										   = {vk::KHRSwapchainExtensionName};
+	vk::DeviceCreateInfo	 deviceCreateInfo(
+			{}, 1, &deviceQueueCreateInfo, static_cast<uint32_t>(requiredDeviceExtension.size()), requiredDeviceExtension.data());
+	deviceCreateInfo.pNext = &featureChain.get<vk::PhysicalDeviceFeatures2>();
+	_device.emplace(_physicalDevice.value(), deviceCreateInfo);
+	_graphicsQueue.emplace(_device.value().getQueue(graphicsIndex, 0));
+	std::cout << "Graphics queue created" << std::endl;
 }
 
 void Renderer::destroy() {
-	// RAII handles cleanup automatically
+	_graphicsQueue.reset();
+	_device.reset();
+	_physicalDevice.reset();
 	_surface.reset();
 	_instance.reset();
 	SDL_DestroyWindow(_window);

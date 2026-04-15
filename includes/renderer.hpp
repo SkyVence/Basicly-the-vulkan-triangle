@@ -47,7 +47,10 @@ namespace Engine {
 		std::optional<vk::raii::Instance>		_instance;
 		std::optional<vk::raii::SurfaceKHR>		_surface;
 		std::optional<vk::raii::PhysicalDevice> _physicalDevice;
+		std::optional<vk::raii::Device>			_device;
+		std::optional<vk::raii::Queue>			_graphicsQueue;
 
 		void pickPhysicalDevice();
+		void createLogicalDevice();
 	};
 } // namespace Engine
