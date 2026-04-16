@@ -3,6 +3,7 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_video.h>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -46,24 +47,24 @@ namespace Engine {
 		// Member variables must be declared in order of parent-to-child dependency.
 		// They are destroyed in reverse order (child-to-parent), so declare context first,
 		// then instance, then surface, then physical device.
-		vk::raii::Context					_context;
-		std::optional<vk::raii::Instance>	_instance;
-		std::optional<vk::raii::SurfaceKHR> _surface;
+		vk::raii::Context	 _context;
+		vk::raii::Instance	 _instance = nullptr;
+		vk::raii::SurfaceKHR _surface  = nullptr;
 
 		// Device
-		std::optional<vk::raii::PhysicalDevice> _physicalDevice;
-		std::optional<vk::raii::Device>			_device;
+		vk::raii::PhysicalDevice _physicalDevice = nullptr;
+		vk::raii::Device		 _device		 = nullptr;
 
 		// Queue
-		std::optional<vk::raii::Queue> _graphicsQueue;
-		uint32_t					   _queueIndex = ~0;
+		vk::raii::Queue _queue		= nullptr;
+		uint32_t		_queueIndex = ~0;
 
 		// SwapChain
-		std::optional<vk::raii::SwapchainKHR> _swapChain;
-		std::vector<vk::Image>				  _swapChainImages;
-		vk::SurfaceFormatKHR				  _swapSurfaceFormat;
-		vk::PresentModeKHR					  _swapPresentMode;
-		vk::Extent2D						  _swapExtent;
+		vk::raii::SwapchainKHR _swapChain = nullptr;
+		std::vector<vk::Image> _swapChainImages;
+		vk::SurfaceFormatKHR   _swapSurfaceFormat;
+		vk::PresentModeKHR	   _swapPresentMode;
+		vk::Extent2D		   _swapExtent;
 
 		// Pipeline
 		vk::raii::PipelineLayout _pipelineLayout   = nullptr;
@@ -75,6 +76,11 @@ namespace Engine {
 		// CommandPool
 		vk::raii::CommandPool	_commandPool   = nullptr;
 		vk::raii::CommandBuffer _commandBuffer = nullptr;
+
+		// Rendering a frame
+		vk::raii::Semaphore _presentCompleteSemaphore = nullptr;
+		vk::raii::Semaphore _renderFinishedSemaphore  = nullptr;
+		vk::raii::Fence		_drawFence				  = nullptr;
 
 		void createInstance();
 		void createSurface();
@@ -94,6 +100,7 @@ namespace Engine {
 									 vk::PipelineStageFlags2 src_stage_mask,
 									 vk::PipelineStageFlags2 dst_stage_mask);
 		void drawFrame();
+		void createSyncObjects();
 
 		vk::SurfaceFormatKHR				 chooseSwapSurfaceFormat(std::vector<vk::SurfaceFormatKHR> const& availableFormats);
 		vk::PresentModeKHR					 chooseSwapPresentMode(std::vector<vk::PresentModeKHR> const& availablePresentModes);

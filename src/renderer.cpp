@@ -140,6 +140,7 @@ Renderer::Renderer(SDL_Window* window, SDL_Event* event) : isRunning(true), _win
 	createGraphicsPipeline();
 	createCommandPool();
 	createCommandBuffer();
+	createSyncObjects();
 }
 
 Renderer::~Renderer() { destroy(); }
@@ -171,7 +172,7 @@ void Renderer::createInstance() {
 										   extensions.data());
 
 		// Create Vulkan context and instance using RAII
-		_instance.emplace(_context, create_info);
+		_instance = vk::raii::Instance(_context, create_info);
 		std::cout << "Created Vulkan instance" << std::endl;
 	} catch (const vk::SystemError& err) {
 		throw std::runtime_error(std::string("Vulkan system error: ") + err.what());
@@ -195,7 +196,7 @@ void Renderer::createSurface() {
 		}
 
 		// Wrap the raw surface in RAII
-		_surface.emplace(*_instance, rawSurface);
+		_surface = vk::raii::SurfaceKHR(_instance, rawSurface);
 
 		std::cout << "Surface created successfully" << std::endl;
 
@@ -209,7 +210,7 @@ void Renderer::createSurface() {
  * Choose a suitable physical device from the available devices. Mostly a dedicated GPU is preferred.
  */
 void Renderer::pickPhysicalDevice() {
-	std::vector<vk::raii::PhysicalDevice> physicalDevices = _instance->enumeratePhysicalDevices();
+	std::vector<vk::raii::PhysicalDevice> physicalDevices = _instance.enumeratePhysicalDevices();
 
 	int bestIndex = -1;
 	int bestScore = -1;
@@ -229,9 +230,9 @@ void Renderer::pickPhysicalDevice() {
 		throw std::runtime_error("failed to find a suitable GPU!");
 	}
 
-	_physicalDevice.emplace(physicalDevices[bestIndex]);
-	auto props		 = _physicalDevice->getProperties();
-	auto memoryProps = _physicalDevice->getMemoryProperties();
+	_physicalDevice	 = physicalDevices[bestIndex];
+	auto props		 = _physicalDevice.getProperties();
+	auto memoryProps = _physicalDevice.getMemoryProperties();
 	std::cout << "Physical device selected: " << props.deviceName << " (" << getDeviceTypeString(props.deviceType)
 			  << ") VRAM: " << memoryProps.memoryHeaps[0].size / 1024 / 1024 << " MB" << std::endl;
 }
@@ -241,13 +242,13 @@ void Renderer::pickPhysicalDevice() {
  */
 void Renderer::createLogicalDevice() {
 	// Find the index of the first queue family that supports graphics operations
-	std::vector<vk::QueueFamilyProperties> queueFamilyProperties = _physicalDevice->getQueueFamilyProperties();
+	std::vector<vk::QueueFamilyProperties> queueFamilyProperties = _physicalDevice.getQueueFamilyProperties();
 
 	// Get the first index into queueFamilyProperties that supports graphics operations and present
 
 	for (uint32_t qfpIndex = 0; qfpIndex < queueFamilyProperties.size(); qfpIndex++) {
 		if ((queueFamilyProperties[qfpIndex].queueFlags & vk::QueueFlagBits::eGraphics) &&
-			_physicalDevice->getSurfaceSupportKHR(qfpIndex, *_surface)) {
+			_physicalDevice.getSurfaceSupportKHR(qfpIndex, *_surface)) {
 			// found a queue family that supports both graphics and present
 			_queueIndex = qfpIndex;
 			break;
@@ -264,6 +265,7 @@ void Renderer::createLogicalDevice() {
 					   vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>
 			featureChain;
 	featureChain.get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering					   = true;
+	featureChain.get<vk::PhysicalDeviceVulkan13Features>().synchronization2					   = true;
 	featureChain.get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState = true;
 	featureChain.get<vk::PhysicalDeviceVulkan11Features>().shaderDrawParameters				   = true;
 
@@ -278,8 +280,8 @@ void Renderer::createLogicalDevice() {
 													.setEnabledExtensionCount(static_cast<uint32_t>(requiredDeviceExtension.size()))
 													.setPpEnabledExtensionNames(requiredDeviceExtension.data());
 
-	_device.emplace(_physicalDevice.value(), deviceCreateInfo);
-	_graphicsQueue.emplace(_device.value(), _queueIndex, 0);
+	_device = vk::raii::Device(_physicalDevice, deviceCreateInfo);
+	_queue	= vk::raii::Queue(_device, _queueIndex, 0);
 	std::cout << "Created logical device" << std::endl;
 }
 /*
@@ -287,9 +289,9 @@ void Renderer::createLogicalDevice() {
  */
 void Renderer::createSwapChain() {
 	try {
-		auto							  surfaceCapabilities	= _physicalDevice->getSurfaceCapabilitiesKHR(*_surface);
-		std::vector<vk::SurfaceFormatKHR> availableFormats		= _physicalDevice->getSurfaceFormatsKHR(*_surface);
-		std::vector<vk::PresentModeKHR>	  availablePresentModes = _physicalDevice->getSurfacePresentModesKHR(*_surface);
+		auto							  surfaceCapabilities	= _physicalDevice.getSurfaceCapabilitiesKHR(*_surface);
+		std::vector<vk::SurfaceFormatKHR> availableFormats		= _physicalDevice.getSurfaceFormatsKHR(*_surface);
+		std::vector<vk::PresentModeKHR>	  availablePresentModes = _physicalDevice.getSurfacePresentModesKHR(*_surface);
 
 		_swapSurfaceFormat	   = chooseSwapSurfaceFormat(availableFormats);
 		_swapPresentMode	   = chooseSwapPresentMode(availablePresentModes);
@@ -310,8 +312,8 @@ void Renderer::createSwapChain() {
 																 .setPresentMode(chooseSwapPresentMode(availablePresentModes))
 																 .setClipped(true);
 
-		_swapChain		 = vk::raii::SwapchainKHR(*_device, swapChainCreateInfo);
-		_swapChainImages = _swapChain->getImages();
+		_swapChain		 = vk::raii::SwapchainKHR(_device, swapChainCreateInfo);
+		_swapChainImages = _swapChain.getImages();
 		std::cout << "Swap chain created with " << _swapChainImages.size() << " images" << std::endl;
 	} catch (const vk::SystemError& err) {
 		throw std::runtime_error(std::string("Vulkan system error: ") + err.what());
@@ -332,7 +334,7 @@ void Renderer::createImageViews() {
 
 	for (auto& image : _swapChainImages) {
 		imageViewCreateInfo.image = image;
-		_swapChainImageViews.emplace_back(*_device, imageViewCreateInfo);
+		_swapChainImageViews.emplace_back(_device, imageViewCreateInfo);
 	}
 
 	std::cout << "Image views created" << std::endl;
@@ -341,7 +343,7 @@ void Renderer::createImageViews() {
 [[nodiscard]] vk::raii::ShaderModule Renderer::createShaderModule(const std::vector<char>& code) const {
 	vk::ShaderModuleCreateInfo createInfo =
 			vk::ShaderModuleCreateInfo().setCodeSize(code.size() * sizeof(char)).setPCode(reinterpret_cast<const uint32_t*>(code.data()));
-	vk::raii::ShaderModule shaderModule{*_device, createInfo};
+	vk::raii::ShaderModule shaderModule{_device, createInfo};
 
 	return shaderModule;
 }
@@ -391,7 +393,7 @@ void Renderer::createGraphicsPipeline() {
 			vk::PipelineViewportStateCreateInfo().setViewportCount(1).setPViewports(&viewport).setScissorCount(1).setPScissors(&scissor);
 
 	vk::PipelineLayoutCreateInfo pipelineLayoutInfo = vk::PipelineLayoutCreateInfo().setSetLayoutCount(0).setPushConstantRangeCount(0);
-	_pipelineLayout									= vk::raii::PipelineLayout(*_device, pipelineLayoutInfo);
+	_pipelineLayout									= vk::raii::PipelineLayout(_device, pipelineLayoutInfo);
 	vk::PipelineRenderingCreateInfo pipelineRenderingInfo =
 			vk::PipelineRenderingCreateInfo().setColorAttachmentCount(1).setPColorAttachmentFormats(&_swapSurfaceFormat.format);
 
@@ -410,20 +412,20 @@ void Renderer::createGraphicsPipeline() {
 
 	vk::StructureChain<vk::GraphicsPipelineCreateInfo, vk::PipelineRenderingCreateInfo> pipelineCreateInfoChain(pipelineCreateInfo,
 																												pipelineRenderingInfo);
-	_graphicsPipeline = vk::raii::Pipeline(*_device, nullptr, pipelineCreateInfoChain.get<vk::GraphicsPipelineCreateInfo>());
+	_graphicsPipeline = vk::raii::Pipeline(_device, nullptr, pipelineCreateInfoChain.get<vk::GraphicsPipelineCreateInfo>());
 	std::cout << "Created Graphics pipeline" << std::endl;
 }
 
 void Renderer::createCommandPool() {
 	vk::CommandPoolCreateInfo poolInfo =
 			vk::CommandPoolCreateInfo().setFlags(vk::CommandPoolCreateFlagBits::eResetCommandBuffer).setQueueFamilyIndex(_queueIndex);
-	_commandPool = vk::raii::CommandPool(*_device, poolInfo);
+	_commandPool = vk::raii::CommandPool(_device, poolInfo);
 }
 
 void Renderer::createCommandBuffer() {
 	vk::CommandBufferAllocateInfo allocInfo =
 			vk::CommandBufferAllocateInfo().setCommandPool(_commandPool).setLevel(vk::CommandBufferLevel::ePrimary).setCommandBufferCount(1);
-	_commandBuffer = std::move(vk::raii::CommandBuffers(*_device, allocInfo).front());
+	_commandBuffer = std::move(vk::raii::CommandBuffers(_device, allocInfo).front());
 }
 
 void Renderer::transition_image_layout(uint32_t				   imageIndex,
@@ -487,6 +489,7 @@ void Renderer::recordCommandBuffer(uint32_t imageIndex) {
 	_commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), _swapExtent));
 
 	_commandBuffer.draw(3, 1, 0, 0);
+	_commandBuffer.endRendering();
 
 	transition_image_layout(imageIndex,
 							vk::ImageLayout::eColorAttachmentOptimal,
@@ -495,18 +498,44 @@ void Renderer::recordCommandBuffer(uint32_t imageIndex) {
 							{},
 							vk::PipelineStageFlagBits2::eColorAttachmentOutput,
 							vk::PipelineStageFlagBits2::eBottomOfPipe);
-
-	_commandBuffer.endRendering();
+	_commandBuffer.end();
 }
 
-void Renderer::drawFrame() {}
+void Renderer::drawFrame() {
+	auto fenceResult = _device.waitForFences(*_drawFence, vk::True, UINT64_MAX);
+	if (fenceResult != vk::Result::eSuccess) {
+		throw std::runtime_error("Failed to wait for fences");
+	}
+	_device.resetFences(*_drawFence);
+	auto [result, imageIndex] = _swapChain.acquireNextImage(UINT64_MAX, *_presentCompleteSemaphore, nullptr);
+	recordCommandBuffer(imageIndex);
+
+	vk::PipelineStageFlags waitDestinationStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput);
+	const vk::SubmitInfo   submitInfo = vk::SubmitInfo()
+												.setWaitSemaphoreCount(1)
+												.setWaitSemaphores(*_presentCompleteSemaphore)
+												.setWaitDstStageMask(waitDestinationStageMask)
+												.setCommandBufferCount(1)
+												.setSignalSemaphoreCount(1)
+												.setSignalSemaphores(*_renderFinishedSemaphore)
+												.setCommandBuffers(*_commandBuffer);
+	_queue.submit(submitInfo, *_drawFence);
+	const vk::PresentInfoKHR presentInfo = vk::PresentInfoKHR()
+												   .setSwapchainCount(1)
+												   .setWaitSemaphoreCount(1)
+												   .setWaitSemaphores(*_renderFinishedSemaphore)
+												   .setSwapchains(*_swapChain)
+												   .setImageIndices(imageIndex);
+	result								 = _queue.presentKHR(presentInfo);
+}
+
+void Renderer::createSyncObjects() {
+	_presentCompleteSemaphore = vk::raii::Semaphore(_device, vk::SemaphoreCreateInfo());
+	_renderFinishedSemaphore  = vk::raii::Semaphore(_device, vk::SemaphoreCreateInfo());
+	_drawFence				  = vk::raii::Fence(_device, vk::FenceCreateInfo().setFlags(vk::FenceCreateFlagBits::eSignaled));
+}
 
 void Renderer::destroy() {
-	_graphicsQueue.reset();
-	_device.reset();
-	_physicalDevice.reset();
-	_surface.reset();
-	_instance.reset();
 	SDL_DestroyWindow(_window);
 	SDL_Quit();
 	std::cout << "Destroyed renderer" << std::endl;
@@ -518,7 +547,8 @@ void Renderer::run() {
 			if (_event->type == SDL_EVENT_QUIT) {
 				isRunning = false;
 			}
-			drawFrame();
 		}
+		_device.waitIdle();
+		drawFrame();
 	}
 }
