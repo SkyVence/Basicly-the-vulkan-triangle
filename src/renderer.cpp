@@ -19,6 +19,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace Engine;
@@ -137,6 +138,8 @@ Renderer::Renderer(SDL_Window* window, SDL_Event* event) : isRunning(true), _win
 	createSwapChain();
 	createImageViews();
 	createGraphicsPipeline();
+	createCommandPool();
+	createCommandBuffer();
 }
 
 Renderer::~Renderer() { destroy(); }
@@ -241,16 +244,16 @@ void Renderer::createLogicalDevice() {
 	std::vector<vk::QueueFamilyProperties> queueFamilyProperties = _physicalDevice->getQueueFamilyProperties();
 
 	// Get the first index into queueFamilyProperties that supports graphics operations and present
-	uint32_t queueIndex = ~0;
+
 	for (uint32_t qfpIndex = 0; qfpIndex < queueFamilyProperties.size(); qfpIndex++) {
 		if ((queueFamilyProperties[qfpIndex].queueFlags & vk::QueueFlagBits::eGraphics) &&
 			_physicalDevice->getSurfaceSupportKHR(qfpIndex, *_surface)) {
 			// found a queue family that supports both graphics and present
-			queueIndex = qfpIndex;
+			_queueIndex = qfpIndex;
 			break;
 		}
 	}
-	if (queueIndex == uint32_t(~0)) {
+	if (_queueIndex == uint32_t(~0)) {
 		throw std::runtime_error("Could not find a queue for graphics and present -> terminating");
 	}
 
@@ -267,7 +270,7 @@ void Renderer::createLogicalDevice() {
 	// create a Device
 	float					  queuePriority = 0.5f;
 	vk::DeviceQueueCreateInfo deviceQueueCreateInfo =
-			vk::DeviceQueueCreateInfo().setQueueFamilyIndex(queueIndex).setQueueCount(1).setPQueuePriorities(&queuePriority);
+			vk::DeviceQueueCreateInfo().setQueueFamilyIndex(_queueIndex).setQueueCount(1).setPQueuePriorities(&queuePriority);
 	vk::DeviceCreateInfo deviceCreateInfo = vk::DeviceCreateInfo()
 													.setPNext(&featureChain.get<vk::PhysicalDeviceFeatures2>())
 													.setQueueCreateInfoCount(1)
@@ -276,7 +279,7 @@ void Renderer::createLogicalDevice() {
 													.setPpEnabledExtensionNames(requiredDeviceExtension.data());
 
 	_device.emplace(_physicalDevice.value(), deviceCreateInfo);
-	_graphicsQueue.emplace(_device.value(), queueIndex, 0);
+	_graphicsQueue.emplace(_device.value(), _queueIndex, 0);
 	std::cout << "Created logical device" << std::endl;
 }
 /*
@@ -410,6 +413,94 @@ void Renderer::createGraphicsPipeline() {
 	_graphicsPipeline = vk::raii::Pipeline(*_device, nullptr, pipelineCreateInfoChain.get<vk::GraphicsPipelineCreateInfo>());
 	std::cout << "Created Graphics pipeline" << std::endl;
 }
+
+void Renderer::createCommandPool() {
+	vk::CommandPoolCreateInfo poolInfo =
+			vk::CommandPoolCreateInfo().setFlags(vk::CommandPoolCreateFlagBits::eResetCommandBuffer).setQueueFamilyIndex(_queueIndex);
+	_commandPool = vk::raii::CommandPool(*_device, poolInfo);
+}
+
+void Renderer::createCommandBuffer() {
+	vk::CommandBufferAllocateInfo allocInfo =
+			vk::CommandBufferAllocateInfo().setCommandPool(_commandPool).setLevel(vk::CommandBufferLevel::ePrimary).setCommandBufferCount(1);
+	_commandBuffer = std::move(vk::raii::CommandBuffers(*_device, allocInfo).front());
+}
+
+void Renderer::transition_image_layout(uint32_t				   imageIndex,
+									   vk::ImageLayout		   old_layout,
+									   vk::ImageLayout		   new_layout,
+									   vk::AccessFlags2		   src_access_mask,
+									   vk::AccessFlags2		   dst_access_mask,
+									   vk::PipelineStageFlags2 src_stage_mask,
+									   vk::PipelineStageFlags2 dst_stage_mask) {
+	vk::ImageMemoryBarrier2 barrier = vk::ImageMemoryBarrier2()
+											  .setSrcStageMask(src_stage_mask)
+											  .setSrcAccessMask(src_access_mask)
+											  .setDstStageMask(dst_stage_mask)
+											  .setDstAccessMask(dst_access_mask)
+											  .setOldLayout(old_layout)
+											  .setNewLayout(new_layout)
+											  .setSrcQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED)
+											  .setDstQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED)
+											  .setImage(_swapChainImages[imageIndex])
+											  .setSubresourceRange(vk::ImageSubresourceRange()
+																		   .setAspectMask(vk::ImageAspectFlagBits::eColor)
+																		   .setBaseMipLevel(0)
+																		   .setLevelCount(1)
+																		   .setBaseArrayLayer(0)
+																		   .setLayerCount(1));
+
+	vk::DependencyInfo dependency_info = vk::DependencyInfo().setDependencyFlags({}).setImageMemoryBarrierCount(1).setPImageMemoryBarriers(&barrier);
+	_commandBuffer.pipelineBarrier2(dependency_info);
+}
+
+void Renderer::recordCommandBuffer(uint32_t imageIndex) {
+	_commandBuffer.begin({});
+
+	transition_image_layout(imageIndex,
+							vk::ImageLayout::eUndefined,
+							vk::ImageLayout::eColorAttachmentOptimal,
+							{},
+							vk::AccessFlagBits2::eColorAttachmentWrite,
+							vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+							vk::PipelineStageFlagBits2::eColorAttachmentOutput);
+
+	vk::ClearValue				clearColor	   = vk::ClearColorValue(0.0f, 0.0f, 0.0f, 1.0f);
+	vk::RenderingAttachmentInfo attachmentInfo = vk::RenderingAttachmentInfo()
+														 .setImageView(_swapChainImageViews[imageIndex])
+														 .setImageLayout(vk::ImageLayout::eColorAttachmentOptimal)
+														 .setLoadOp(vk::AttachmentLoadOp::eClear)
+														 .setStoreOp(vk::AttachmentStoreOp::eStore)
+														 .setClearValue(clearColor);
+
+	vk::RenderingInfo renderingInfo = vk::RenderingInfo()
+											  .setRenderArea(vk::Rect2D().setOffset(vk::Offset2D().setX(0).setY(0)).setExtent(_swapExtent))
+											  .setLayerCount(1)
+											  .setColorAttachments(attachmentInfo);
+
+	_commandBuffer.beginRendering(renderingInfo);
+
+	_commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *_graphicsPipeline);
+
+	_commandBuffer.setViewport(0,
+							   vk::Viewport(0.0f, 0.0f, static_cast<float>(_swapExtent.width), static_cast<float>(_swapExtent.height), 0.0f, 1.0f));
+	_commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), _swapExtent));
+
+	_commandBuffer.draw(3, 1, 0, 0);
+
+	transition_image_layout(imageIndex,
+							vk::ImageLayout::eColorAttachmentOptimal,
+							vk::ImageLayout::ePresentSrcKHR,
+							vk::AccessFlagBits2::eColorAttachmentWrite,
+							{},
+							vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+							vk::PipelineStageFlagBits2::eBottomOfPipe);
+
+	_commandBuffer.endRendering();
+}
+
+void Renderer::drawFrame() {}
+
 void Renderer::destroy() {
 	_graphicsQueue.reset();
 	_device.reset();
@@ -427,6 +518,7 @@ void Renderer::run() {
 			if (_event->type == SDL_EVENT_QUIT) {
 				isRunning = false;
 			}
+			drawFrame();
 		}
 	}
 }

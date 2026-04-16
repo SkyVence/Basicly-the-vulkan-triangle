@@ -56,18 +56,25 @@ namespace Engine {
 
 		// Queue
 		std::optional<vk::raii::Queue> _graphicsQueue;
+		uint32_t					   _queueIndex = ~0;
 
-		// Swap chain
+		// SwapChain
 		std::optional<vk::raii::SwapchainKHR> _swapChain;
 		std::vector<vk::Image>				  _swapChainImages;
 		vk::SurfaceFormatKHR				  _swapSurfaceFormat;
 		vk::PresentModeKHR					  _swapPresentMode;
 		vk::Extent2D						  _swapExtent;
-		vk::raii::PipelineLayout			  _pipelineLayout	= nullptr;
-		vk::raii::Pipeline					  _graphicsPipeline = nullptr;
+
+		// Pipeline
+		vk::raii::PipelineLayout _pipelineLayout   = nullptr;
+		vk::raii::Pipeline		 _graphicsPipeline = nullptr;
 
 		// Image View
 		std::vector<vk::raii::ImageView> _swapChainImageViews;
+
+		// CommandPool
+		vk::raii::CommandPool	_commandPool   = nullptr;
+		vk::raii::CommandBuffer _commandBuffer = nullptr;
 
 		void createInstance();
 		void createSurface();
@@ -76,6 +83,17 @@ namespace Engine {
 		void createSwapChain();
 		void createImageViews();
 		void createGraphicsPipeline();
+		void createCommandPool();
+		void createCommandBuffer();
+		void recordCommandBuffer(uint32_t imageIndex);
+		void transition_image_layout(uint32_t				 imageIndex,
+									 vk::ImageLayout		 old_layout,
+									 vk::ImageLayout		 new_layout,
+									 vk::AccessFlags2		 src_access_mask,
+									 vk::AccessFlags2		 dst_access_mask,
+									 vk::PipelineStageFlags2 src_stage_mask,
+									 vk::PipelineStageFlags2 dst_stage_mask);
+		void drawFrame();
 
 		vk::SurfaceFormatKHR				 chooseSwapSurfaceFormat(std::vector<vk::SurfaceFormatKHR> const& availableFormats);
 		vk::PresentModeKHR					 chooseSwapPresentMode(std::vector<vk::PresentModeKHR> const& availablePresentModes);
