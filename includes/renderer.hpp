@@ -16,6 +16,11 @@ namespace Engine {
 			"VK_LAYER_KHRONOS_validation",
 	};
 
+	struct Data {
+	    float rot = 0.0f;
+		int backTextureIndex = 0;
+	};
+
 #ifdef NDEBUG
 	constexpr bool enableValidation = false;
 #else
@@ -31,6 +36,7 @@ namespace Engine {
 		uint32_t	w_height;
 		std::string w_title;
 		bool		isRunning;
+		Data _data;
 
 		void	 run();
 		void	 destroy();
@@ -40,6 +46,18 @@ namespace Engine {
 		// SDL
 		SDL_Window* _window;
 		SDL_Event*	_event;
+
+		struct Texture {
+            vk::raii::Image image = nullptr;
+            vk::raii::DeviceMemory memory = nullptr;
+            vk::raii::ImageView view = nullptr;
+        };
+        std::vector<Texture> _textures;
+        vk::raii::Sampler _textureSampler = nullptr;
+
+        vk::raii::DescriptorSetLayout _descriptorSetLayout = nullptr;
+        vk::raii::DescriptorPool _descriptorPool = nullptr;
+        vk::raii::DescriptorSet _descriptorSet = nullptr;
 
 		// Vulkan RAII
 		// Member variables must be declared in order of parent-to-child dependency.
@@ -80,6 +98,7 @@ namespace Engine {
 		vk::raii::Semaphore _renderFinishedSemaphore  = nullptr;
 		vk::raii::Fence		_drawFence				  = nullptr;
 
+
 		void createInstance();
 		void createSurface();
 		void pickPhysicalDevice();
@@ -99,6 +118,13 @@ namespace Engine {
 									 vk::PipelineStageFlags2 dst_stage_mask);
 		void drawFrame();
 		void createSyncObjects();
+		void createDescriptorSetLayout();
+		void createDescriptorPool();
+		void createDescriptorSet();
+		void createTextureSampler();
+		void createTestTexture();
+		void createSimpleTestTexture();
+		void loadTextures();
 
 		vk::SurfaceFormatKHR				 chooseSwapSurfaceFormat(std::vector<vk::SurfaceFormatKHR> const& availableFormats);
 		vk::PresentModeKHR					 chooseSwapPresentMode(std::vector<vk::PresentModeKHR> const& availablePresentModes);
